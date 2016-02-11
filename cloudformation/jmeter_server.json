@@ -1,0 +1,389 @@
+{
+	"AWSTemplateFormatVersion": "2010-09-09",
+	"Description": "AWS CloudFormation Template for launching a JMeter server with the Flexible File Writer plugin and the CloudWatch Logs Agent installed in it. Please note you still have to configure the CloudWatch Logs agent with your own credentials",
+	"Parameters": {
+  		"MetricsNamespace" : {
+    		"Type" : "String",
+    		"Default" : "jmeter",
+    		"Description" : "Name of the namespace for your CloudWatch metrics. Your metrics will be organized according to this namespace, for example: namespace/metric1, namespace/metric2, etc."
+  		}, 
+		"KeyName": {
+			"Description": "Name of an existing EC2 KeyPair to enable SSH access to the instances",
+			"Type": "AWS::EC2::KeyPair::KeyName",
+			"ConstraintDescription": "must be the name of an existing EC2 KeyPair."
+		}
+	},
+	"Mappings": {
+		"RegionMap": {
+			"us-east-1": {
+				"AMI": "ami-af7359c5"
+			}
+		}
+	},
+	"Resources": {
+		"LogRole": {
+			"Type": "AWS::IAM::Role",
+			"Properties": {
+				"AssumeRolePolicyDocument": {
+					"Version": "2012-10-17",
+					"Statement": [{
+						"Effect": "Allow",
+						"Principal": {
+							"Service": [
+								"ec2.amazonaws.com"
+							]
+						},
+						"Action": [
+							"sts:AssumeRole"
+						]
+					}]
+				},
+				"Path": "/",
+				"Policies": [{
+					"PolicyName": "LogRolePolicy",
+					"PolicyDocument": {
+						"Version": "2012-10-17",
+						"Statement": [{
+							"Effect": "Allow",
+							"Action": [
+								"logs:Create*",
+								"logs:PutLogEvents"
+							],
+							"Resource": [
+								"arn:aws:logs:*:*:*"
+							]
+						}]
+					}
+				}]
+			}
+		},
+		"LogRoleInstanceProfile": {
+			"Type": "AWS::IAM::InstanceProfile",
+			"Properties": {
+				"Path": "/",
+				"Roles": [{
+					"Ref": "LogRole"
+				}]
+			}
+		},
+		"JMeterServerSecurityGroup": {
+			"Type": "AWS::EC2::SecurityGroup",
+			"Properties": {
+				"GroupDescription": "Enable HTTP access via port 80 and SSH access via port 22",
+				"SecurityGroupIngress": [{
+					"IpProtocol": "tcp",
+					"FromPort": "80",
+					"ToPort": "80",
+					"CidrIp": "0.0.0.0/0"
+				}, {
+					"IpProtocol": "tcp",
+					"FromPort": "22",
+					"ToPort": "22",
+					"CidrIp": "0.0.0.0/0"
+				}]
+			}
+		},
+		"JMeterLogGroup": {
+			"Type": "AWS::Logs::LogGroup",
+			"Properties": {
+				"RetentionInDays": 7
+			}
+		},		
+		"JMeterServer": {
+			"Type": "AWS::EC2::Instance",
+			"Metadata": {
+				"Comment": "Install JMeter 2.13",
+				"AWS::CloudFormation::Init": {
+         			"configSets" : {
+            			"install_all" : [ "install_cfn", "install_logs" ]
+          			},
+         		
+         		"install_cfn" : {
+            		"files" : {
+              		"/etc/cfn/cfn-hup.conf" : {
+                		"content" : { "Fn::Join" : ["", [
+		                  "[main]\n",
+        		          "stack=", { "Ref" : "AWS::StackId" }, "\n",
+                		  "region=", { "Ref" : "AWS::Region" }, "\n"
+		                ]]},
+		                "mode"    : "000400",
+		                "owner"   : "root",
+		                "group"   : "root"
+		              },
+
+        		      "/etc/cfn/hooks.d/cfn-auto-reloader.conf" : {
+		                "content": { "Fn::Join" : ["", [
+		                  "[cfn-auto-reloader-hook]\n",
+		                  "triggers=post.update\n",
+		                  "path=Resources.JMeterServer.Metadata.AWS::CloudFormation::Init\n",
+		                  "action=/opt/aws/bin/cfn-init -v ",
+		                  "         --stack ", { "Ref" : "AWS::StackName" },
+		                  "         --resource JMeterServer ",
+		                  "         --configsets install_all ",
+		                  "         --region ", { "Ref" : "AWS::Region" }, "\n",
+		                  "runas=root\n"
+		                ]]}
+		              }
+		            },
+		            "services" : {
+		              "sysvinit" : {
+		                "cfn-hup" : { "enabled" : "true", "ensureRunning" : "true",
+		                              "files" : ["/etc/cfn/cfn-hup.conf", "/etc/cfn/hooks.d/cfn-auto-reloader.conf"]}
+		              }
+		            }
+		          },
+
+		       "install_logs": {
+		            "packages" : {
+		              "yum" : {
+		                "awslogs" : []
+		              }
+		            },
+					"files": {
+							"/etc/awslogs/awslogs.conf": {
+								"content": {
+									"Fn::Join": [
+										"", [
+											"[general]\n",
+											"state_file= /var/awslogs/agent-state\n",
+											"[results.log]\n",
+											"file = /home/ec2-user/jmeter/test-results/results.log\n",
+											"log_group_name = ", {
+												"Ref": "JMeterLogGroup"
+											}, "\n",
+											"log_stream_name = jmeter-server\n",
+											"datetime_format = %Y/%m/%d %H:%M:%S.%f %Z"
+										]
+									]
+								},
+								"mode": "000400",
+								"owner": "root",
+								"group": "root"
+							},
+				            "/etc/awslogs/awscli.conf": {
+				                "content": { "Fn::Join": [ "", [
+				                  "[plugins]\n",
+				                  "cwlogs = cwlogs\n",
+				                  "[default]\n",
+				                  "region = ", { "Ref" : "AWS::Region" }, "\n"
+				                ] ] },
+				                "mode": "000444",
+				                "owner": "root",
+				                "group": "root"
+				              }
+					},
+				    "commands" : {
+			           		"01_create_state_directory" : {
+			                	"command" : "mkdir -p /var/awslogs/state"
+			              	}
+			        },						
+			        "services" : {
+    	    		      "sysvinit" : {
+			                "awslogs"    : { "enabled" : "true", "ensureRunning" : "true",
+		    	                             "files" : [ "/etc/awslogs/awslogs.conf" ] }
+		        	      }
+	            	}
+				}
+			}				
+			},
+			"Properties": {
+					"ImageId": {"Fn::FindInMap": ["RegionMap", {"Ref": "AWS::Region"},"AMI"]},
+					"KeyName": {
+						"Ref": "KeyName"
+					},
+					"InstanceType": "t2.nano",
+					"SecurityGroups": [{
+						"Ref": "JMeterServerSecurityGroup"
+					}],
+                	"Tags": [
+                        {
+                            "Value": "jmeter-server", 
+                            "Key": "Name"
+                        }
+                    ], 
+					"IamInstanceProfile": {
+						"Ref": "LogRoleInstanceProfile"
+					},
+					"UserData": {
+						"Fn::Base64": {
+							"Fn::Join": [
+								"", [
+						           "#!/bin/bash -xe\n",
+						             "yum update -y aws-cfn-bootstrap\n",
+
+						             "/opt/aws/bin/cfn-init -v ",
+						             "         --stack ", { "Ref" : "AWS::StackName" },
+						             "         --resource JMeterServer ",
+						             "         --configsets install_all ",
+						             "         --region ", { "Ref" : "AWS::Region" }, "\n",
+             
+									"# Get the sample JMeter test plan\n",
+									"wget https://raw.githubusercontent.com/ConcurrenyLabs/jmeter-cw-logs/master/jmeter/test-plans/basicHttpTest.jmx -P /home/ec2-user/jmeter/test-plans\n",
+									"chown ec2-user:ec2-user /home/ec2-user/jmeter/test-plans/basicHttpTest.jmx\n",
+             
+						             "/opt/aws/bin/cfn-signal -e $? ",
+						             "         --stack ", { "Ref" : "AWS::StackName" },
+						             "         --resource JMeterServer ",
+						             "         --region ", { "Ref" : "AWS::Region" }, "\n"
+								]
+							]
+						}
+					}
+				},
+     			"CreationPolicy" : {
+			        "ResourceSignal" : {
+			          "Timeout" : "PT15M"
+			        }
+			      }				
+			},
+	"Requests":{
+  		"Type": "AWS::Logs::MetricFilter",    
+  		"Properties": {
+    	"FilterPattern": "[]",
+    	"LogGroupName": { "Ref" : "JMeterLogGroup" },
+   		"MetricTransformations": [
+                    {
+                        "MetricValue": "1",
+                        "MetricNamespace": {"Ref":"MetricsNamespace"},
+                        "MetricName": "AllRequests"
+                    }
+                ]
+  		}
+	},
+	"HTTP200Responses":{
+  		"Type": "AWS::Logs::MetricFilter",    
+  		"Properties": {
+    	"FilterPattern": "[...,responseCode=200,responseMessage,isSuccsessful]",
+    	"LogGroupName": { "Ref" : "JMeterLogGroup" },
+   		"MetricTransformations": [
+                    {
+                        "MetricValue": "1",
+                        "MetricNamespace": {"Ref":"MetricsNamespace"},
+                        "MetricName": "AllHTTP_200"
+                    }
+                ]
+  		}
+	},
+	"HTTP400Responses":{
+  		"Type": "AWS::Logs::MetricFilter",    
+  		"Properties": {
+    	"FilterPattern": "[...,responseCode=400,responseMessage,isSuccsessful]",
+    	"LogGroupName": { "Ref" : "JMeterLogGroup" },
+   		"MetricTransformations": [
+                    {
+                        "MetricValue": "1",
+                        "MetricNamespace": {"Ref":"MetricsNamespace"},
+                        "MetricName": "AllHTTP_400"
+                    }
+                ]
+  		}
+	},
+	"HTTP500Responses":{
+  		"Type": "AWS::Logs::MetricFilter",    
+  		"Properties": {
+    	"FilterPattern": "[...,responseCode=500,responseMessage,isSuccsessful]",
+    	"LogGroupName": { "Ref" : "JMeterLogGroup" },
+   		"MetricTransformations": [
+                    {
+                        "MetricValue": "1",
+                        "MetricNamespace": {"Ref":"MetricsNamespace"},
+                        "MetricName": "AllHTTP_500"
+                    }
+                ]
+  		}
+	},
+	"ResponseTimeMs":{
+  		"Type": "AWS::Logs::MetricFilter",    
+  		"Properties": {
+    	"FilterPattern": "[timeStamp,sampleLabel,threadName,responseTime,...]",
+    	"LogGroupName": { "Ref" : "JMeterLogGroup" },
+   		"MetricTransformations": [
+                    {
+                        "MetricValue": "$responseTime",
+                        "MetricNamespace": {"Ref":"MetricsNamespace"},
+                        "MetricName": "AllResponseTime_ms"
+                    }
+                ]
+  		}
+	},
+	"ConnectTimeMs":{
+  		"Type": "AWS::Logs::MetricFilter",    
+  		"Properties": {
+    	"FilterPattern": "[timeStamp,sampleLabel,threadName,responseTime,connectTime,...]",
+    	"LogGroupName": { "Ref" : "JMeterLogGroup" },
+   		"MetricTransformations": [
+                    {
+                        "MetricValue": "$connectTime",
+                        "MetricNamespace": {"Ref":"MetricsNamespace"},
+                        "MetricName": "AllConnectTime_ms"
+                    }
+                ]
+  		}
+	},
+	"LatencyMs":{
+  		"Type": "AWS::Logs::MetricFilter",    
+  		"Properties": {
+    	"FilterPattern": "[timeStamp,sampleLabel,threadName,responseTime,connectTime,latency,...]",
+    	"LogGroupName": { "Ref" : "JMeterLogGroup" },
+   		"MetricTransformations": [
+                    {
+                        "MetricValue": "$latency",
+                        "MetricNamespace": {"Ref":"MetricsNamespace"},
+                        "MetricName": "AllLatency_ms"
+                    }
+                ]
+  		}
+	},
+	"SentBytes":{
+  		"Type": "AWS::Logs::MetricFilter",    
+  		"Properties": {
+    	"FilterPattern": "[timeStamp,sampleLabel,threadName,responseTime,connectTime,latency,sentBytes,...]",
+    	"LogGroupName": { "Ref" : "JMeterLogGroup" },
+   		"MetricTransformations": [
+                    {
+                        "MetricValue": "$sentBytes",
+                        "MetricNamespace": {"Ref":"MetricsNamespace"},
+                        "MetricName": "AllSentBytes"
+                    }
+                ]
+  		}
+	},
+	"ReceivedBytes":{
+  		"Type": "AWS::Logs::MetricFilter",    
+  		"Properties": {
+    	"FilterPattern": "[timeStamp,sampleLabel,threadName,responseTime,connectTime,latency,sentBytes,receivedBytes,...]",
+    	"LogGroupName": { "Ref" : "JMeterLogGroup" },
+   		"MetricTransformations": [
+                    {
+                        "MetricValue": "$receivedBytes",
+                        "MetricNamespace": {"Ref":"MetricsNamespace"},
+                        "MetricName": "AllReceivedBytes"
+                    }
+                ]
+  		}			
+	}
+	},
+	"Outputs": {
+		"JMeterServerInstanceId": {
+			"Description": "The instance ID of the JMeter server",
+			"Value": {
+				"Ref": "JMeterServer"
+			}
+		},
+		"PublicIP": {
+			"Description": "Public IP address of the JMeter server",
+			"Value": {
+				"Fn::GetAtt": [
+					"JMeterServer",
+					"PublicIp"
+				]
+			}
+		},
+		"CloudWatchLogGroupName": {
+			"Description": "The name of the CloudWatch log group",
+			"Value": {
+				"Ref": "JMeterLogGroup"
+			}
+		}
+	}
+}
