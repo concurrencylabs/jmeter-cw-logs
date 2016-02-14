@@ -18,13 +18,22 @@ the CloudWatch Logs agent for publishing log data to CLoudWatch Logs.
 to an S3 endpoint. This is only intended for validation purposes.
 
 JMeter is installed in the following directory:
-```/home/ec2-user/jmeter/apache-jmeter-2.13```
+
+```
+/home/ec2-user/jmeter/apache-jmeter-2.13
+```
 
 The JMeter test plan is downloaded to the following location: 
-```/home/ec2-user/jmeter/test-plans/basicHttpTest.jmx```
+
+```
+/home/ec2-user/jmeter/test-plans/basicHttpTest.jmx
+```
 
 The CloudWatch Logs agent expects the JMeter test result log in the following location:
-```/home/ec2-user/jmeter/test-results/results.log```
+
+```
+/home/ec2-user/jmeter/test-results/results.log
+```
 
 To start the JMeter test just SSH to the EC2 instance launched by this template and execute:
 
