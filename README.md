@@ -1,5 +1,9 @@
 ## Export JMeter test results to CloudWatch Logs.
 
+Code from the following blog post:
+https://www.concurrencylabs.com/blog/publish-jmeter-test-results-to-cloudwatch-logs/
+
+
 This repo contains the following:
 
 * CloudFormation template for publishing JMeter test results to CloudWatch Logs
