@@ -1,6 +1,6 @@
 {
 	"AWSTemplateFormatVersion": "2010-09-09",
-	"Description": "AWS CloudFormation Template for launching a JMeter server with the Flexible File Writer plugin and the CloudWatch Logs Agent installed in it. Please note you still have to configure the CloudWatch Logs agent with your own credentials",
+	"Description": "AWS CloudFormation Template for launching a JMeter server with the Flexible File Writer plugin and the CloudWatch Logs Agent installed in it. There is no need to configure the CloudWatch Logs agent with your own credentials due to this template creating an IAM role and an EC2 instance profile",
 	"Parameters": {
   		"MetricsNamespace" : {
     		"Type" : "String",
