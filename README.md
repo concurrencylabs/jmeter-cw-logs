@@ -48,6 +48,13 @@ nohup /home/ec2-user/jmeter/apache-jmeter-2.13/bin/jmeter -n -t /home/ec2-user/j
 Once you run the JMeter test, you should be able to see test results flowing into CloudWatch Logs
 almost immediately.
 
+To stop the test, run the following command from the JMeter EC2 instance:
+
+```
+/home/ec2-user/jmeter/apache-jmeter-2.13/bin/shutdown.sh
+```
+
+
 
 
 

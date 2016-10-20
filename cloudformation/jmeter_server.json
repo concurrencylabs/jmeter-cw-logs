@@ -218,7 +218,7 @@
 						             "         --region ", { "Ref" : "AWS::Region" }, "\n",
              
 									"# Get the sample JMeter test plan\n",
-									"wget https://raw.githubusercontent.com/ConcurrenyLabs/jmeter-cw-logs/master/jmeter/test-plans/basicHttpTest.jmx -P /home/ec2-user/jmeter/test-plans\n",
+									"wget https://raw.githubusercontent.com/ConcurrenyLabs/jmeter-cw-logs/master/jmeter/test-plans/basicHttpTest.jmx -P /home/ec2-user/jmeter/test-plans/basicHttpTest.jmx\n",
 									"chown ec2-user:ec2-user /home/ec2-user/jmeter/test-plans/basicHttpTest.jmx\n",
              
 						             "/opt/aws/bin/cfn-signal -e $? ",
